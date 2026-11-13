@@ -1,0 +1,186 @@
+// MiniBrow: the bit buffer is kept in local variables (cb / nb) while a block is decoded. Compilers that do not use
+// strict aliasing (Open Watcom) reload j->code_buffer / j->code_bits after every store to data[]. The macros below
+// do exactly what stbi__jpeg_huff_decode / stbi__extend_receive / stbi__jpeg_get_bits / stbi__jpeg_get_bit do
+// (same results, also for truncated or corrupt data).
+#define STBI__MB_SYNC_OUT() (j->code_buffer = cb, j->code_bits = nb)
+#define STBI__MB_SYNC_IN()  (cb = j->code_buffer, nb = j->code_bits)
+#define STBI__MB_GROW(need) do { if (nb < (need)) { STBI__MB_SYNC_OUT(); stbi__grow_buffer_unsafe(j); STBI__MB_SYNC_IN(); } } while (0)
+#define STBI__MB_GETBIT(v) do { \
+      STBI__MB_GROW(1); \
+      if (nb < 1) (v) = 0; else { (v) = (int) (cb >> 31); cb <<= 1; --nb; } \
+   } while (0)
+// v = n bits (extend: sign-extended like stbi__extend_receive); 0 without consuming if the stream ran out
+#define STBI__MB_BITS(v, n, extend) do { \
+      unsigned int mbk_; int mbs_; \
+      STBI__MB_GROW(n); \
+      if (nb < (n)) (v) = 0; else { \
+         mbs_ = (int) (cb >> 31); \
+         mbk_ = stbi_lrot(cb, (n)); \
+         cb = mbk_ & ~stbi__bmask[(n)]; \
+         mbk_ &= stbi__bmask[(n)]; \
+         nb -= (n); \
+         (v) = (extend) ? (int) mbk_ + (stbi__jbias[(n)] & (mbs_ - 1)) : (int) mbk_; \
+      } \
+   } while (0)
+// v = next Huffman symbol of h (-1 on error)
+#define STBI__MB_HUFF(v, h) do { \
+      int mbc_, mbk_; \
+      STBI__MB_GROW(16); \
+      mbc_ = (cb >> (32 - FAST_BITS)) & ((1 << FAST_BITS)-1); \
+      mbk_ = (h)->fast[mbc_]; \
+      if (mbk_ < 255) { \
+         int mbsz_ = (h)->size[mbk_]; \
+         if (mbsz_ > nb) (v) = -1; \
+         else { cb <<= mbsz_; nb -= mbsz_; (v) = (h)->values[mbk_]; } \
+      } else { \
+         unsigned int mbt_ = cb >> 16; \
+         for (mbk_ = FAST_BITS+1 ; ; ++mbk_) \
+            if (mbt_ < (h)->maxcode[mbk_]) break; \
+         if (mbk_ == 17) { nb -= 16; (v) = -1; } \
+         else if (mbk_ > nb) (v) = -1; \
+         else { \
+            mbc_ = ((cb >> (32 - mbk_)) & stbi__bmask[mbk_]) + (h)->delta[mbk_]; \
+            if (mbc_ < 0 || mbc_ >= 256) (v) = -1; \
+            else { nb -= mbk_; cb <<= mbk_; (v) = (h)->values[mbc_]; } \
+         } \
+      } \
+   } while (0)
+
+static int stbi__jpeg_decode_block_prog_ac(stbi__jpeg *j, short data[64], stbi__huffman *hac, stbi__int16 *fac)
+{
+   int k;
+   unsigned int cb;
+   int nb;
+   if (j->spec_start == 0) return stbi__err("can't merge dc and ac", "Corrupt JPEG");
+
+   if (j->succ_high == 0) {
+      int shift = j->succ_low;
+
+      if (j->eob_run) {
+         --j->eob_run;
+         return 1;
+      }
+
+      k = j->spec_start;
+      do {
+         unsigned int zig;
+         int c,r,s;
+         if (j->code_bits < 16) stbi__grow_buffer_unsafe(j);
+         c = (j->code_buffer >> (32 - FAST_BITS)) & ((1 << FAST_BITS)-1);
+         r = fac[c];
+         if (r) { // fast-AC path
+            k += (r >> 4) & 15; // run
+            s = r & 15; // combined length
+            if (s > j->code_bits) return stbi__err("bad huffman code", "Combined length longer than code bits available");
+            j->code_buffer <<= s;
+            j->code_bits -= s;
+            zig = stbi__jpeg_dezigzag[k++];
+            data[zig] = (short) ((r >> 8) * (1 << shift));
+         } else {
+            int rs = stbi__jpeg_huff_decode(j, hac);
+            if (rs < 0) return stbi__err("bad huffman code","Corrupt JPEG");
+            s = rs & 15;
+            r = rs >> 4;
+            if (s == 0) {
+               if (r < 15) {
+                  j->eob_run = (1 << r);
+                  if (r)
+                     j->eob_run += stbi__jpeg_get_bits(j, r);
+                  --j->eob_run;
+                  break;
+               }
+               k += 16;
+            } else {
+               k += r;
+               zig = stbi__jpeg_dezigzag[k++];
+               data[zig] = (short) (stbi__extend_receive(j,s) * (1 << shift));
+            }
+         }
+      } while (k <= j->spec_end);   } else {
+      // refinement scan for these AC coefficients
+
+      short bit = (short) (1 << j->succ_low);
+
+      STBI__MB_SYNC_IN();
+      if (j->eob_run) {
+         --j->eob_run;
+         for (k = j->spec_start; k <= j->spec_end; ++k) {
+            short *p = &data[stbi__jpeg_dezigzag[k]];
+            if (*p != 0) {
+               int b;
+               STBI__MB_GETBIT(b);
+               if (b)
+                  if ((*p & bit)==0) {
+                     if (*p > 0)
+                        *p += bit;
+                     else
+                        *p -= bit;
+                  }
+            }
+         }
+      } else {
+         k = j->spec_start;
+         do {
+            int r,s,rs;
+            STBI__MB_HUFF(rs, hac);
+            if (rs < 0) { STBI__MB_SYNC_OUT(); return stbi__err("bad huffman code","Corrupt JPEG"); }
+            s = rs & 15;
+            r = rs >> 4;
+            if (s == 0) {
+               if (r < 15) {
+                  j->eob_run = (1 << r) - 1;
+                  if (r) {
+                     int v;
+                     STBI__MB_BITS(v, r, 0);
+                     j->eob_run += v;
+                  }
+                  r = 64; // force end of block
+               } else {
+                  // r=15 s=0 should write 16 0s, so we just do
+                  // a run of 15 0s and then write s (which is 0),
+                  // so we don't have to do anything special here
+               }
+            } else {
+               int b;
+               if (s != 1) { STBI__MB_SYNC_OUT(); return stbi__err("bad huffman code", "Corrupt JPEG"); }
+               // sign bit
+               STBI__MB_GETBIT(b);
+               if (b)
+                  s = bit;
+               else
+                  s = -bit;
+            }
+
+            // advance by r
+            while (k <= j->spec_end) {
+               short *p = &data[stbi__jpeg_dezigzag[k++]];
+               if (*p != 0) {
+                  int b;
+                  STBI__MB_GETBIT(b);
+                  if (b)
+                     if ((*p & bit)==0) {
+                        if (*p > 0)
+                           *p += bit;
+                        else
+                           *p -= bit;
+                     }
+               } else {
+                  if (r == 0) {
+                     *p = (short) s;
+                     break;
+                  }
+                  --r;
+               }
+            }
+         } while (k <= j->spec_end);
+      }
+      STBI__MB_SYNC_OUT();
+   }
+   return 1;
+}
+#undef STBI__MB_HUFF
+#undef STBI__MB_BITS
+#undef STBI__MB_GETBIT
+#undef STBI__MB_GROW
+#undef STBI__MB_SYNC_IN
+#undef STBI__MB_SYNC_OUT

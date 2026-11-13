@@ -1,0 +1,31 @@
+/* minibrow.rc - version information shown in the exe's Properties (the number comes from version.h) */
+#include "version.h"
+
+1 VERSIONINFO
+FILEVERSION     MB_VER_MAJOR, MB_VER_MINOR, 0, 0
+PRODUCTVERSION  MB_VER_MAJOR, MB_VER_MINOR, 0, 0
+FILEFLAGSMASK   0x3FL
+FILEFLAGS       0x0L
+FILEOS          0x4L
+FILETYPE        0x1L
+FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",      "nanitaro"
+            VALUE "FileDescription",  "MiniBrow - lightweight web browser for Windows 95"
+            VALUE "FileVersion",      MB_VERSION
+            VALUE "InternalName",     "minibrow"
+            VALUE "LegalCopyright",   "Copyright (c) 2026 nanitaro"
+            VALUE "OriginalFilename", "minibrow.exe"
+            VALUE "ProductName",      "MiniBrow"
+            VALUE "ProductVersion",   MB_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1252
+    END
+END

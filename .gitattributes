@@ -1,0 +1,8 @@
+# テキストは CRLF で扱う (DOS/PC-98 向け)
+* text=auto eol=crlf
+
+# ビルド生成物・バイナリ
+*.exe binary
+*.obj binary
+*.lib binary
+*.res binary
