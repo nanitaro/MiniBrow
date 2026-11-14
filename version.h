@@ -11,7 +11,7 @@
 #define VERSION_H
 
 #define MB_VER_MAJOR    0
-#define MB_VER_MINOR    1
-#define MB_VERSION      "0.1"
+#define MB_VER_MINOR    2
+#define MB_VERSION      "0.2"
 
 #endif

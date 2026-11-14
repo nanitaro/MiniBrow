@@ -3422,6 +3422,8 @@ static int stbi__process_frame_header(stbi__jpeg *z, int scan)
       z->img_comp[i].raw_data = stbi__malloc_mad2(z->img_comp[i].w2 >> z->img_comp[i].mb_cs, z->img_comp[i].h2 >> z->img_comp[i].mb_cs, 15);   // MiniBrow: reduced size
       if (z->img_comp[i].raw_data == NULL)
          return stbi__free_jpeg_components(z, i+1, stbi__err("outofmem", "Out of memory"));
+      // MiniBrow: zero-filled (a JPEG that stops early leaves parts unwritten; they must not show old memory)
+      memset(z->img_comp[i].raw_data, 0, (size_t) (z->img_comp[i].w2 >> z->img_comp[i].mb_cs) * (size_t) (z->img_comp[i].h2 >> z->img_comp[i].mb_cs) + 15);
       // align blocks for idct using mmx/sse
       z->img_comp[i].data = (stbi_uc*) (((size_t) z->img_comp[i].raw_data + 15) & ~15);
       if (z->progressive) {
@@ -3431,6 +3433,7 @@ static int stbi__process_frame_header(stbi__jpeg *z, int scan)
          z->img_comp[i].raw_coeff = stbi__malloc_mad3(z->img_comp[i].w2, z->img_comp[i].h2, sizeof(short), 15);
          if (z->img_comp[i].raw_coeff == NULL)
             return stbi__free_jpeg_components(z, i+1, stbi__err("outofmem", "Out of memory"));
+         memset(z->img_comp[i].raw_coeff, 0, (size_t) z->img_comp[i].w2 * (size_t) z->img_comp[i].h2 * sizeof(short) + 15);   // MiniBrow: zero-filled
          z->img_comp[i].coeff = (short*) (((size_t) z->img_comp[i].raw_coeff + 15) & ~15);
       }
    }

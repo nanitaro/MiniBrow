@@ -658,11 +658,12 @@ static size_t swebp__proxy_read(size_t size, void *dest, void *userdata)
 	
 	nextpos = pos + size;
 
-	if (nextpos >= proxy->length)
-	{
-		readed = size - (proxy->length - nextpos);
-		nextpos = proxy->length;
-	}
+	/* MiniBrow: read at most what is left of the chunk. The original "size - (proxy->length - nextpos)" wrapped around
+	   and returned more than size, so callers' buffers overflowed (temp[5], temp[8], the alpha plane). */
+	if (pos >= proxy->length)
+		readed = 0;
+	else if (nextpos > proxy->length || nextpos < pos)
+		readed = proxy->length - pos;
 	else
 		readed = size;
 

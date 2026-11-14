@@ -4179,13 +4179,15 @@ static int ConnWait(Conn *c, DWORD ms)
 
 /* 応答を 1 つ受け取る (x->resp)。carry はパイプラインで前の応答の後ろに届いていた分 (この応答の後ろの分を入れて返す)。
    waitMs が 0 でなければ、最初の 1 バイトをその時間まで待つ。
-   戻り値は 1 = 受け取った (f->err が空でなければ失敗)、2 = 使い回した接続が切れていた (canRetry のとき)、0 = 返事が来ない */
+   戻り値は 1 = 受け取った (f->err が空でなければ失敗)、2 = 使い回した接続が切れていた (canRetry のとき)、0 = 返事が来ない。
+   Content-Length か chunked で長さが分かる応答が、終わる前に切れたら失敗にする (TLS で close_notify の無い切断も
+   終わりとして読むので、途中で切られた本文を完全なものとして使わないため)。長さの無い応答は切れたところまで */
 static int HttpRecv(Fetch *f, HttpCtx *x, Conn *c, int canRetry, StrBuf *carry, DWORD waitMs)
 {
     char        buf[4096];
     const char *p, *body;
-    int         n, chunking = 0, ckSt = 0;
-    long        lastProg = 0, hdrScan = 0, ckPos = 0;
+    int         n, chunking = 0, ckSt = 0, eof = 0;
+    long        lastProg = 0, hdrScan = 0, ckPos = 0, dlWant = -1;
 
     for (;;) {
         if (carry != NULL && carry->len > 0) {
@@ -4202,6 +4204,7 @@ static int HttpRecv(Fetch *f, HttpCtx *x, Conn *c, int canRetry, StrBuf *carry, 
             }
             canRetry = 0;
             if (n == 0) {
+                eof = 1;
                 break;
             }
             if (n < 0) {
@@ -4262,6 +4265,7 @@ static int HttpRecv(Fetch *f, HttpCtx *x, Conn *c, int canRetry, StrBuf *carry, 
                     if (cl != NULL && cl < body) {
                         f->dlTotal = atol(cl + 16);
                     }
+                    dlWant = HttpFrame(x->resp.p, x->hdrLen, 0, &x->keep, &x->life);   /* 本文の長さ (分からなければ負) */
                     CdFileName(x->resp.p, body, f->dlName, sizeof(f->dlName));
                     if (f->dlName[0] == '\0') {
                         const char *e;
@@ -4319,6 +4323,12 @@ static int HttpRecv(Fetch *f, HttpCtx *x, Conn *c, int canRetry, StrBuf *carry, 
                 PostMessage(g_hwndMain, WM_APP_PROG, f->gen, x->resp.len);
             }
         }
+    }
+    if (eof && f->err[0] == '\0' && !FetchAborted(f)
+        && (chunking || (x->bodyEnd > 0 && x->resp.len < x->bodyEnd)
+            || (x->dlStream && dlWant >= 0 && f->dlLen < dlWant))) {
+        StrCopy(f->err, "応答の途中で接続が切れました (データが全部届いていません)。", sizeof(f->err));
+        x->keep = 0;
     }
     if (x->bodyEnd > 0 && x->resp.len > x->bodyEnd) {
         /* 応答の後ろのデータ: パイプラインなら次の応答の分。そうでなければ捨てる (その接続は使わない) */
@@ -7216,6 +7226,21 @@ static void PutU32LE(BYTE *p, unsigned long v)
 }
 
 /*
+ * WebP の p のチャンク (p + 8 <= len) の次のチャンクの位置を返す。
+ * 長さが残りのデータに収まらなければ len を返して、たどるのをやめさせる
+ * (0xFFFFFFF8 などの長さで、進む量が 0 や負にならないように)
+ */
+static long WebpNext(const BYTE *d, long p, long len)
+{
+    unsigned long size = U32LE(d + p + 4);
+
+    if (size > (unsigned long)(len - p - 8)) {
+        return len;
+    }
+    return p + 8 + (long)size + (long)(size & 1);
+}
+
+/*
  * アニメ WebP の 1 コマ (ANMF の中身: ALPH / VP8 / VP8L チャンク) を、
  * simplewebp が読める単独の WebP にして RGBA にデコードする
  */
@@ -7226,7 +7251,7 @@ static unsigned char *DecodeWebpFrame(const BYTE *chunks, long len, int fw, int 
     BYTE          *buf, *o;
     unsigned char *px;
 
-    for (p = 0; p + 8 <= len; p += 8 + ((U32LE(chunks + p + 4) + 1) & ~1UL)) {
+    for (p = 0; p + 8 <= len; p = WebpNext(chunks, p, len)) {
         if (memcmp(chunks + p, "ALPH", 4) == 0) {
             alpha = 1;
         }
@@ -7278,7 +7303,7 @@ static int DecodeWebpAnim(const BYTE *d, long len, const ImgJob *job, int i, Img
     ScaledSize(cw, ch, job->maxW[i], &tw, &th);
     frameBytes = DibBytes(tw, th);
     /* デコードを始める前にコマ数を数え、上限を超えるなら静止画にする (古い CPU では重いため) */
-    for (p = 12; p + 8 <= len; p += 8 + (long)((U32LE(d + p + 4) + 1) & ~1UL)) {
+    for (p = 12; p + 8 <= len; p = WebpNext(d, p, len)) {
         if (memcmp(d + p, "ANMF", 4) == 0) {
             n++;
         }
@@ -7383,7 +7408,7 @@ static int DecodeWebpAnim(const BYTE *d, long len, const ImgJob *job, int i, Img
 static BYTE *DecodeWebpFirstFrame(const BYTE *d, long len, const ImgJob *job, int i, ImgResult *r)
 {
     long p;
-    for (p = 12; p + 8 <= len; p += 8 + (long)((U32LE(d + p + 4) + 1) & ~1UL)) {
+    for (p = 12; p + 8 <= len; p = WebpNext(d, p, len)) {
         unsigned long size = U32LE(d + p + 4);
         if (memcmp(d + p, "ANMF", 4) == 0 && size >= 16 && (long)size <= len - p - 8) {
             const BYTE    *pl = d + p + 8;

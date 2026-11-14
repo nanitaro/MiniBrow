@@ -13,6 +13,9 @@ param([string]$File)
 #           659 / 440 / 315 ms, progressive 3586 ms -> 2487 / 2246 / 2086 ms (the entropy decoding stays).
 #           As in libjpeg 6b, subsampled planes are reduced less (4:2:0 at 1/2: chroma at full size, no upsampling).
 #  (there is no part 3: one multiplication per coefficient was tried and gave nothing on a Pentium 100)
+#  part 5 - the sample planes and the coefficients of progressive JPEGs are zero-filled when allocated. A JPEG that
+#           stops early (an unknown marker, a truncated file) is still returned as decoded, and the parts that no scan
+#           wrote showed whatever the memory held before (other pages' data, readable by a script with getImageData).
 # Byte-preserving (Latin-1). Writes nothing unless every replacement of a part matches. ASCII only.
 if (-not $File -or -not (Test-Path -LiteralPath $File)) { "stop: -File must be stb_image.h"; exit 2 }
 $enc = [Text.Encoding]::GetEncoding(28591)
@@ -363,4 +366,13 @@ static void stbi__mb_idct_reduce(stbi_uc *out, int out_stride, short data[64], c
   'part 4 patched'
 } else { 'part 4 already patched' }
 
+# ---- part 5
+if (-not $s.Contains('MiniBrow: zero-filled')) {
+  $s = Edit-Exact $s (L "      if (z->img_comp[i].raw_data == NULL)`n         return stbi__free_jpeg_components(z, i+1, stbi__err(`"outofmem`", `"Out of memory`"));`n") (L ("      if (z->img_comp[i].raw_data == NULL)`n         return stbi__free_jpeg_components(z, i+1, stbi__err(`"outofmem`", `"Out of memory`"));`n" +
+       "      // MiniBrow: zero-filled (a JPEG that stops early leaves parts unwritten; they must not show old memory)`n" +
+       "      memset(z->img_comp[i].raw_data, 0, (size_t) (z->img_comp[i].w2 >> z->img_comp[i].mb_cs) * (size_t) (z->img_comp[i].h2 >> z->img_comp[i].mb_cs) + 15);`n"))
+  $s = Edit-Exact $s (L "         if (z->img_comp[i].raw_coeff == NULL)`n            return stbi__free_jpeg_components(z, i+1, stbi__err(`"outofmem`", `"Out of memory`"));`n") (L ("         if (z->img_comp[i].raw_coeff == NULL)`n            return stbi__free_jpeg_components(z, i+1, stbi__err(`"outofmem`", `"Out of memory`"));`n" +
+       "         memset(z->img_comp[i].raw_coeff, 0, (size_t) z->img_comp[i].w2 * (size_t) z->img_comp[i].h2 * sizeof(short) + 15);   // MiniBrow: zero-filled`n"))
+  'part 5 patched'
+} else { 'part 5 already patched' }
 [IO.File]::WriteAllText($File, $s, $enc)
