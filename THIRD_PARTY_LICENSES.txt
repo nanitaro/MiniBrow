@@ -165,8 +165,11 @@ Full texts: xs\licenses\lgpl-3.0.txt, xs\licenses\gpl-3.0.txt,
 
 XS is linked statically into minibrow.exe. The complete source code of
 MiniBrow, including the XS sources and the changes made to them
-(xs\MINIBROW-CHANGES.txt), is provided so that XS can be modified and
-minibrow.exe rebuilt (Open Watcom C 2.0: wmake).
+(xs\MINIBROW-CHANGES.txt), is available so that XS can be modified and
+minibrow.exe rebuilt (Open Watcom C 2.0: wmake):
+  https://github.com/nanitaro/MiniBrow
+The source of each release is under the tag MiniBrow_<version> (for example
+MiniBrow_0.2; the version is shown on the start page of MiniBrow).
 
 ------------------------------------------------------------------------------
 Included with XS: fdlibm (xs\fdlibm)

@@ -20,6 +20,8 @@ notices in their file headers.
 
 Changes made for MiniBrow (Open Watcom C / Windows 95)
 ------------------------------------------------------
+Modified by nanitaro for MiniBrow between 2026-10-30 and 2026-11-10
+(the last change: xs/sources/xsre.c).
 Each change is marked with a "MiniBrow:" comment.
 
   xs/sources/xsBigInt.c
@@ -64,6 +66,10 @@ New files (part of MiniBrow, same license as XS: LGPL-3.0-or-later)
 
 Rebuilding / replacing XS
 -------------------------
-The whole MiniBrow source is distributed with the program. To use a modified
-XS, change the files under xs/ and run "wmake clean" then "wmake" with
-Open Watcom C 2.0; xs.mak builds xs.lib, which is linked into minibrow.exe.
+The release archive contains minibrow.exe and the license files, not the
+source. The complete source of each release, including xs/ with these
+changes, is at https://github.com/nanitaro/MiniBrow under the tag
+MiniBrow_<version> (for example MiniBrow_0.2; the version is shown on the
+start page of MiniBrow). To use a modified XS, change the files under xs/ and
+run "wmake clean" then "wmake" with Open Watcom C 2.0; xs.mak builds xs.lib,
+which is linked into minibrow.exe.

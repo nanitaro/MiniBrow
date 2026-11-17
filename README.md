@@ -134,4 +134,4 @@ MiniBrow 本体は MIT License で提供しています。[LICENSE.txt](LICENSE.
 
 MiniBrow が使用しているライブラリのライセンスは、[THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) と `xs\licenses\` をご覧ください。
 
-JavaScript エンジンの Moddable XS は、GNU Lesser General Public License (LGPL) version 3 以降で提供されています。XS を変更して `minibrow.exe` を作り直せるよう、ソースコードをこのリポジトリで公開しています。
+JavaScript エンジンの Moddable XS は、GNU Lesser General Public License (LGPL) version 3 以降で提供されています。XS を変更して `minibrow.exe` を作り直せるよう、ソースコードをこのリポジトリで公開しています。配布した版のソースは、版番号のタグ `MiniBrow_<版番号>` にあります (例: `MiniBrow_0.2`)。

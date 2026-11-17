@@ -162,3 +162,6 @@ JavaScript エンジンの Moddable XS は、GNU Lesser General Public License
 作り直せるよう、ソースコードを次の場所で公開しています。
 
   ソースコードの入手先: https://github.com/nanitaro/MiniBrow
+
+配布した版のソースは、版番号のタグ MiniBrow_<版番号> にあります
+(例: MiniBrow_0.2)。版番号はスタートページの見出しに出ます。
